@@ -9,7 +9,7 @@
  *  works in Firefox 3, Chrome 5, Safari 5 and higher
  *
  *  Usage:
- *   $.fileUploadSupported() //return a boolean value indicates if the browser is supported.
+ *   $.fileUploadSupported // a boolean value indicates if the browser is supported.
  *   $('input[type=file]').fileUpload(ajaxSettings); //Make a input[type=file] select-and-send file upload widget
  *   $('#any-element').fileUpload(ajaxSettings); //Make a element receive dropped file
  *   //TBD $('form#fileupload').fileUpload(ajaxSettings); //Send a ajax form with file
@@ -31,7 +31,7 @@
 	var config = {};
 	
 	// Feature detection
-	var isSupported = function () {
+	var isSupported = (function () {
 		if (
 			!(XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary) // Gecko specific binary xhr since Fx3.0
 			&&
@@ -42,7 +42,7 @@
 		}
 		log('INFO: This is a ajaxupload-enabled browser.');
 		return true;
-	}
+	})();
 
 	// Overwrite xhr.send() in Gecko > 1.9.0 (Fx30)
 	/* if (XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary) {
@@ -172,7 +172,7 @@
 	
 	$.fn.fileUpload = function(settings) {
 
-		if (!isSupported()) {
+		if (!isSupported) {
 			log('ERROR: skip not-supported browser.');
 			return;
 		}
