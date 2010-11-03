@@ -15,6 +15,14 @@
  *   //TBD $('form#fileupload').fileUpload(ajaxSettings); //Send a ajax form with file
  *
  *   ajaxSettings is the object contains $.ajax settings that will be passed to.
+ *   Available extended settings are:
+ *      fileType:
+ *           regexp check against filename extension; You should always checked it again on server-side.
+ *           e.g. /^(gif|jpe?g|png|tiff?)$/i for images
+ *      fileMaxSize:
+ *           Maxium file size allowed in bytes. Use scientific notation for converience.
+ *           e.g. 1E4 for 1KB, 1E8 for 1MB, 1E9 for 10MB.
+ *			 If you really care the difference between 1024 and 1000, use Math.pow(2, 10)
  *
  *  TBD: 
  *   Better file reading error handling
@@ -63,10 +71,25 @@
 	var handleFile = function (settings, file) {
 		var info = {
 			// properties of standard File object || Gecko 1.9 properties
-			type: file.type || '',
+			type: file.type || '', // MIME type
 			size: file.size || file.fileSize,
 			name: file.name || file.fileName
 		};
+
+		if (settings.fileType && settings.fileType.test) {
+			// Not using MIME types
+			if (!settings.fileType.test(info.name.substr(info.name.lastIndexOf('.')+1))) {
+				log('ERROR: Not acceptable file type.');
+				window.alert('Not acceptable file type.');
+				return;
+			}
+		}
+		
+		if (settings.fileMaxSize && file.size > settings.fileMaxSize) {
+			log('ERROR: File is too big.');
+			window.alert('File is too big.');
+			return;
+		}
 		
 		// File size|type|name checking goes here
 
