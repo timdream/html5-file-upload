@@ -8,11 +8,16 @@
  *  built with getAsBinary, sendAsBinary, FormData, FileReader and etc.
  *  works in Firefox 3, Chrome 5, Safari 5 and higher
  *
+ *  Image resizing and uploading currently works in Fx 3 and up only.
+ *  An extra settings will allow Webkit users to upload the original image.
+ *
  *  Usage:
  *   $.fileUploadSupported // a boolean value indicates if the browser is supported.
+ *   $.imageUploadSupported // a boolean value indicates if the browser could handle uploading resized images.
  *   $('input[type=file]').fileUpload(ajaxSettings); //Make a input[type=file] select-and-send file upload widget
  *   $('#any-element').fileUpload(ajaxSettings); //Make a element receive dropped file
  *   //TBD $('form#fileupload').fileUpload(ajaxSettings); //Send a ajax form with file
+ *   //TBD $('canvas').fileUpload(ajaxSettings); //Upload given canvas as if it's an png image.
  *
  *   ajaxSettings is the object contains $.ajax settings that will be passed to.
  *   Available extended settings are:
@@ -27,8 +32,22 @@
  *           callback function when there is any error preventing file upload to start,
  *           $.ajax and ajax events won't be called when error.
  *           Use $.noop to overwrite default alert function.
+ *      imageMaxWidth, imageMaxHeight:
+ *           Use any of the two settings to enable client-size image resizing.
+ *           Image will be resized to fit into given rectangle.
+ *           File size and type limit checking will be ignored.
+ *      allowUploadOriginalImage:
+ *           Set to true if you accept original image to be uploaded as a fallback
+ *           when image resizing functionality is not availible.
+ *           File size and type limit will be enforced.
+ *      forceResize:
+ *           Set to true will cause the image being re-sampled even if the resized image 
+ *           has the same demension as the original one.
+ *      imageType:
+ *           Acceptable values are: 'jpeg', 'png', or 'auto'.
  *
  *  TBD: 
+ *   ability to change settings after binding (you can unbind and bind again as a workaround)
  *   multipole file handling
  *   form intergation
  *
@@ -46,9 +65,12 @@
 	};
 	
 	// Feature detection
+	
+	var canSendBinaryString = (XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary);
+	
 	var isSupported = (function () {
 		if (
-			!(XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary) // Gecko specific binary xhr since Fx3.0
+			!canSendBinaryString // Gecko specific binary xhr since Fx3.0
 			&&
 			!window.FormData // HTML5 browsers that supports FormData interface (which append files)
 		) {
@@ -59,6 +81,25 @@
 		return true;
 	})();
 
+	var isImageSupported = (function () {
+		var canvas = document.createElement('canvas');
+		if (canvas.mozGetAsFile) {
+			// Fx4 (> beta 7; 20100917) non-standard in-memory file
+			log('INFO: This browser supports image resizing and uploading through canvas.mozGetAsFile.');
+			return true;
+		}
+		if (
+			(window.FileReader || window.File.prototype.getAsDataURL)
+			&& window.atob && canvas.toDataURL && canSendBinaryString
+		) {
+			// Use above functions to extract and send binary string
+			log('INFO: This browser supports image resizing and uploading through binary string uploading.');
+			return true;
+		}
+		log('INFO: This browser does not support uploading resized images.');
+		return false;
+	})();
+	
 	// Overwrite xhr.send() in Gecko > 1.9.0 (Fx30)
 	/* if (XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary) {
 		log('INFO: xhr.send is overwritten.');
@@ -83,33 +124,41 @@
 			name: file.name || file.fileName
 		};
 
-		if (settings.fileType && settings.fileType.test) {
-			// Not using MIME types
-			if (!settings.fileType.test(info.name.substr(info.name.lastIndexOf('.')+1))) {
-				log('ERROR: Invalid Filetype.');
-				settings.fileError.call(this, info, 'INVALID_FILETYPE', 'Invalid filetype.');
+		settings.resizeImage = !!(settings.imageMaxWidth || settings.imageMaxHeight);
+
+		if (settings.resizeImage && !isImageSupported && settings.allowUploadOriginalImage) {
+			log('INFO: Fall back to upload original un-resized image.');
+			setting.resizeImage = false;
+		}
+		
+		if (settings.resizeImage) {
+			settings.imageMaxWidth = settings.imageMaxWidth || Infinity;
+			settings.imageMaxHeight = settings.imageMaxHeight || Infinity;
+		}
+
+		if (!settings.resizeImage) {
+			if (settings.fileType && settings.fileType.test) {
+				// Not using MIME types
+				if (!settings.fileType.test(info.name.substr(info.name.lastIndexOf('.')+1))) {
+					log('ERROR: Invalid Filetype.');
+					settings.fileError.call(this, info, 'INVALID_FILETYPE', 'Invalid filetype.');
+					return;
+				}
+			}
+			
+			if (settings.fileMaxSize && file.size > settings.fileMaxSize) {
+				log('ERROR: File exceeds size limit.');
+				settings.fileError.call(this, info, 'FILE_EXCEEDS_SIZE_LIMIT', 'File exceeds size limit.');
 				return;
 			}
 		}
-		
-		if (settings.fileMaxSize && file.size > settings.fileMaxSize) {
-			log('ERROR: File exceeds size limit.');
-			settings.fileError.call(this, info, 'FILE_EXCEEDS_SIZE_LIMIT', 'File exceeds size limit.');
-			return;
-		}
-		
-		// File size|type|name checking goes here
 
-		if (window.FormData) {
+		if (!settings.resizeImage && window.FormData) {
 			log('INFO: Bypass file reading, insert file object into FormData object directly.');
 			handleForm(settings, file, null, info);
 		} else if (window.FileReader) {
 			log('INFO: Using FileReader to do asynchronously file reading.');
 			var reader = new FileReader();
-			reader.onloadend = function (ev) {
-				var bin = ev.target.result;
-				handleForm(settings, file, bin, info);
-			};
 			reader.onerror = function (ev) {
 				if (ev.target.error) {
 					switch (ev.target.error) {
@@ -130,24 +179,137 @@
 					}
 				}
 			}
-			reader.readAsBinaryString(file);
+			if (!settings.resizeImage) {
+				reader.onloadend = function (ev) {
+					var bin = ev.target.result;
+					handleForm(settings, file, bin, info);
+				};
+				reader.readAsBinaryString(file);
+			} else {
+				reader.onloadend = function (ev) {
+					var dataurl = ev.target.result;
+					handleImage(settings, file, dataurl, info);
+				};
+				reader.readAsDataURL(file);
+			}
 		} else {
 			log('WARN: FileReader does not exist, UI will be blocked when reading big file.');
-			try {
-				var bin = file.getAsBinary();
-			} catch (e) {
-				log('ERROR: File not readable.');
-				settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
-				return;
+			if (!settings.resizeImage) {
+				try {
+					var bin = file.getAsBinary();
+				} catch (e) {
+					log('ERROR: File not readable.');
+					settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
+					return;
+				}
+			} else {
+				try {
+					var bin = file.getAsDataURL();
+				} catch (e) {
+					log('ERROR: File not readable.');
+					settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
+					return;
+				}
 			}
-			handleForm(settings, file, bin, info);
+			handleImage(settings, file, dataurl, info);
 		}
 	};
 
+	// step 1.5: inject file into <img>, paste the pixels into <canvas>,
+	// read the final image
+	var handleImage = function (settings, file, dataurl, info) {
+		var timer = setTimeout(
+			function () {
+				log('ERROR: <img> failed to load, file is not a supported image format.');
+				settings.fileError.call(this, info, 'FILE_NOT_IMAGE', 'File is not a supported image format.');
+			},
+			200 //FIXME: what if a local file did take longer than this time to load.
+		);
+		var img = new Image();
+		img.onload = function () {
+			clearTimeout(timer);
+			var ratio = Math.max(
+				img.width/settings.imageMaxWidth,
+				img.height/settings.imageMaxHeight,
+				1
+			);
+			var d = {
+				w: Math.floor(Math.max(img.width/ratio, 1)),
+				h: Math.floor(Math.max(img.height/ratio, 1))
+			}
+			log(
+				'INFO: Original image size: ' + img.width.toString(10) + 'x' + img.height.toString(10)
+				+ ', resized image size: ' + d.w + 'x' + d.h + '.'
+			);
+			if (!settings.forceResize && img.width === d.w && img.height === d.h) {
+				log('INFO: Image demension is the same, send the original file.');
+				handleForm(
+					settings,
+					file,
+					window.atob(dataurl.substr(dataurl.indexOf('e64,')+4)),
+					info
+				);
+				return;
+			}
+			var canvas = document.createElement('canvas');
+			canvas.setAttribute('width', d.w);
+			canvas.setAttribute('height', d.h);
+			canvas.getContext('2d').drawImage(
+				img,
+				0,
+				0,
+				img.width,
+				img.height,
+				0,
+				0, 
+				d.w,
+				d.h
+			);
+			if (!settings.imageType || settings.imageType === 'auto') {
+				if (info.type === 'image/jpeg') settings.imageType = 'jpeg';
+				else settings.imageType = 'png';
+			}
+			
+			var ninfo = {
+				type: 'image/' + settings.imageType,
+				name: info.name.substr(0, info.name.indexOf('.')) + '.resized.' + settings.imageType
+			};
+			
+			if (canvas.mozGetAsFile && window.FormData) {
+				// Gecko 2 (Fx4) non-standard function
+				var nfile = canvas.mozGetAsFile(
+					ninfo.name,
+					'image/' + settings.imageType
+				);
+				ninfo.size = file.size || file.fileSize;
+				handleForm(
+					settings,
+					nfile,
+					null,
+					ninfo
+				);
+			} else {
+				// Read the image as DataURL, convert it back to binary string.
+				var bin = window.atob(
+					canvas
+					.toDataURL('image/' + settings.imageType)
+					.substr(19 + settings.imageType.length) // ('data:image/' + ';base64,').length === 19
+				);
+				ninfo.size = bin.length;
+				handleForm(
+					settings,
+					null,
+					bin,
+					ninfo
+				);
+			}
+		}
+		img.src = dataurl;
+	}
 	// Step 2: construct form data and send the file
 	// paramaters: Ajax settings, File object, binary string of file || null, file info assoc array
 	var handleForm = function (settings, file, bin, info) {
-		if (window.FormData) {
+		if (window.FormData && file) {
 			// FormData API saves the day
 			log('INFO: Using FormData to construct form.');
 			var formdata = new FormData();
@@ -163,8 +325,8 @@
 				if (s.__beforeSend) return s.__beforeSend.call(this, xhr, s);
 			}
 			//settings.data = formdata;
-		} else {
-			log('INFO: FormData does not exist, concat our own multipart/form-data data string.');
+		} else if (canSendBinaryString) {
+			log('INFO: Concat our own multipart/form-data data string.');
 			
 			// A placeholder MIME type
 			if (!info.type) info.type = 'application/octet-stream';
@@ -186,6 +348,9 @@
 			+ 'Content-Type: ' + info.type + '\n\n'
 			+ bin + '\n\n'
 			+ '--' + bd + '--';
+		} else {
+			log('ERROR: Image data is represent as a string but binary xhr function not available. You may set allowUploadOriginalImage to allow the original file being sent.');
+			return;
 		}
 		xhrupload(settings);
 	};
@@ -193,7 +358,7 @@
 	// Step 3: start sending out file
 	var xhrupload = function (settings) {
 		log('INFO: Sending file.');
-		if (!window.FormData && XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary) {
+		if (typeof settings.data === 'string' && canSendBinaryString) {
 			log('INFO: Using xhr.sendAsBinary.');
 			settings.___beforeSend = settings.beforeSend;
 			settings.beforeSend = function (xhr, s) {
@@ -269,5 +434,6 @@
 	};
 	
 	$.fileUploadSupported = isSupported;
+	$.imageUploadSupported = isImageSupported;
 	
 })(jQuery);

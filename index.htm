@@ -62,16 +62,21 @@
 	<h2>Demo</h2>
 	<h3>Detector</h3>
 	<p id="detector">&nbsp;</p>
+	<p id="image-detector">&nbsp;</p>
 	<h3>Click-and-send button</h3>
 	<form action="./upload.json.php" method="post" enctype="multipart/form-data">
-	<p><input type="file" name="Filedata" /></p>
+	<p><input class="file-upload" type="file" name="Filedata" /></p>
 	</form>
 	<h3>Click-and-send button (w/ CSS hack)</h3>
 	<form action="./upload.json.php" method="post" enctype="multipart/form-data">
-	<p id="file_containor"><input type="file" name="Filedata" /></p>
+	<p id="file_containor"><input class="file-upload" type="file" name="Filedata" /></p>
 	</form>
 	<h3>Simple file drop zone</h3>
 	<div id="dropbox"></div>
+	<h3>Image resizing and uploading</h3>
+	<form action="./upload.json.php" method="post" enctype="multipart/form-data">
+	<p><input class="image-upload" type="file" name="Filedata" /></p>
+	</form>
 	<h3>One more thing ...</h3>
 	<p>Do you know the first buttons can also receive dropped file?</p>
 	<p>Have fun. ~ <a href="http://timc.idv.tw/">timdream</a>
@@ -97,7 +102,8 @@
 	<!--<script type="text/javascript" src="./jquery-latest.js"></script>-->
 	<script type="text/javascript" src="./jquery.html5-fileupload.js"></script>
 	<script type="text/javascript">
-	
+	$(function(){
+
 	// Detector demo
 	if (!$.fileUploadSupported) {
 		$(document.body).addClass('not_supported');
@@ -106,12 +112,48 @@
 		$('#detector').text('This browser is supported.');
 	}
 	
+	// Detector demo
+	if (!$.imageUploadSupported) {
+		$(document.body).addClass('not_supported');
+		$('#image-detector').text('This browser DOES NOT supports image resizing and uploading.');
+	} else {
+		$('#image-detector').text('This browser supports image resizing and uploading.');
+	}
 	// Enable plug-in
-	$('input[type=file], #dropbox').fileUpload(
+	$('.file-upload, #dropbox').fileUpload(
 		{
 			url: './upload.json.php',
 			type: 'POST',
 			dataType: 'json',
+			beforeSend: function () {
+				$(document.body).addClass('uploading');
+			},
+			complete: function () {
+				$(document.body).removeClass('uploading');
+			},
+			success: function (result, status, xhr) {
+				if (!result) {
+					window.alert('Server error.');
+					return;
+				}
+				if (result.error !== 0) {
+					window.alert(result.error);
+					return;
+				}
+				window.alert('Success! You have sent a file named \'' + result.name + '\' with MIME type \'' + result.type + '\'.');
+			}
+		}
+	);
+	
+	// Enable image upload plugin
+	$('.image-upload').fileUpload(
+		{
+			url: './upload.json.php',
+			type: 'POST',
+			dataType: 'json',
+			imageMaxHeight: 200,
+			imageMaxWidth: 300,
+			allowUploadOriginalImage: true,
 			beforeSend: function () {
 				$(document.body).addClass('uploading');
 			},
@@ -144,7 +186,7 @@
 			$(this).removeClass('dragging');
 		}
 	);
-	
+	});
 	</script>
 </body>
 </html>
