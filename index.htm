@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html lang="zh-tw">
+<head>
+	<meta charset="UTF-8" />
+	<title>HTML5 AJAX File Upload Control</title>
+	<meta property="og:title" content="HTML5 AJAX File Upload Control"/>
+	<meta property="og:site_name" content="timdream"/>
+	<meta property="fb:admins" content="541998202"/>
+	<style type="text/css">
+	
+	body.uploading {
+		background: url("ajax-loader.gif") no-repeat fixed right top transparent;
+	}
+	
+	#dropbox {
+		border: 5px solid #ddd;
+		background-color: #ddd;
+		height: 200px; width: 200px;
+		-moz-border-radius: 10px;
+		-webkit-border-radius: 10px;
+	}
+	
+	.dragging #dropbox {
+		border: 5px inset #ccc;
+	}
+	
+	/* file input box hack that makes a button */
+	#file_containor {
+		border: 5px solid #ddd;
+		background-color: #ddd;
+		height: 200px; width: 200px;
+		-moz-border-radius: 10px;
+		-webkit-border-radius: 10px;
+		overflow: hidden; position: relative;
+	}
+
+	#file_containor:hover {
+		border: 5px outset #ccc;
+	}
+
+	#file_containor:active {
+		border: 5px inset #ccc;
+	}
+
+	
+	#file_containor input {
+		position: absolute; top: 0; right: 0;
+		font-size: 250px;
+		opacity: 0;
+		cursor: pointer; /* Won't work in Fx 3.6 */
+	}
+	
+	iframe {float: right}
+	
+	</style>
+</head>
+<body>
+	<h1>HTML5 AJAX File Upload</h1>
+	<p>For Firefox 3, Chrome 5, Safari 5 and higher</p>
+	<p><a href="./jquery.html5-fileupload.js">Source (jQuery Plug-in)</a></p>
+	<h2>Demo</h2>
+	<h3>Detector</h3>
+	<p id="detector">&nbsp;</p>
+	<h3>Click-and-send button</h3>
+	<form action="./upload.json.php" method="post" enctype="multipart/form-data">
+	<p><input type="file" name="Filedata" /></p>
+	</form>
+	<h3>Click-and-send button (w/ CSS hack)</h3>
+	<form action="./upload.json.php" method="post" enctype="multipart/form-data">
+	<p id="file_containor"><input type="file" name="Filedata" /></p>
+	</form>
+	<h3>Simple file drop zone</h3>
+	<div id="dropbox"></div>
+	<h3>One more thing ...</h3>
+	<p>Do you know the first buttons can also receive dropped file?</p>
+	<p>Have fun. ~ <a href="http://timc.idv.tw/">timdream</a>
+	<iframe src="http://www.facebook.com/plugins/like.php?href=http%3A%2F%2Ftimc.idv.tw%2Fhtml5-file-upload%2F&amp;layout=standard&amp;show_faces=true&amp;width=450&amp;action=like&amp;font=trebuchet+ms&amp;colorscheme=light&amp;height=80" scrolling="no" frameborder="0" style="border:none; overflow:hidden; width:450px; height:80px;" allowTransparency="true"></iframe>
+	<a href="https://github.com/timdream/html5-file-upload"><img style="position: absolute; top: 0; right: 0; border: 0;" src="http://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub" /></a>
+	<script type="text/javascript">
+
+	//Log function to be called with html5-fileupload plugin.
+	window.log = function (s) {
+		try {
+			console.log.apply(this, arguments);
+		} catch (e) {
+			try {
+				// .apply() won't work in Chrome
+				console.log(s);
+			} catch (e) {
+			}
+		}
+	};
+
+	</script>
+	<script type="text/javascript" src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+	<!--<script type="text/javascript" src="./jquery-latest.js"></script>-->
+	<script type="text/javascript" src="./jquery.html5-fileupload.js"></script>
+	<script type="text/javascript">
+	
+	// Detector demo
+	if (!$.fileUploadSupported) {
+		$(document.body).addClass('not_supported');
+		$('#detector').text('This browser is NOT supported.');
+	} else {
+		$('#detector').text('This browser is supported.');
+	}
+	
+	// Enable plug-in
+	$('input[type=file], #dropbox').fileUpload(
+		{
+			url: './upload.json.php',
+			type: 'POST',
+			dataType: 'json',
+			beforeSend: function () {
+				$(document.body).addClass('uploading');
+			},
+			complete: function () {
+				$(document.body).removeClass('uploading');
+			},
+			success: function (result, status, xhr) {
+				if (!result) {
+					window.alert('Server error.');
+					return;
+				}
+				if (result.error !== 0) {
+					window.alert(result.error);
+					return;
+				}
+				window.alert('Success! You have sent a file named \'' + result.name + '\' with MIME type \'' + result.type + '\'.');
+			}
+		}
+	);
+	
+	// Provide page-wide dragover interaction
+	$(document.body).bind(
+		'dragenter',
+		function () {
+			$(this).addClass('dragging');
+		}
+	).bind(
+		'dragleave',
+		function () {
+			$(this).removeClass('dragging');
+		}
+	);
+	
+	</script>
+</body>
+</html>
