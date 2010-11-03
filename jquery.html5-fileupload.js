@@ -23,9 +23,12 @@
  *           Maxium file size allowed in bytes. Use scientific notation for converience.
  *           e.g. 1E4 for 1KB, 1E8 for 1MB, 1E9 for 10MB.
  *			 If you really care the difference between 1024 and 1000, use Math.pow(2, 10)
+ *      fileError(info, textStatus, textDescription):
+ *           callback function when there is any error preventing file upload to start,
+ *           $.ajax and ajax events won't be called when error.
+ *           Use $.noop to overwrite default alert function.
  *
  *  TBD: 
- *   Better file reading error handling
  *   multipole file handling
  *   form intergation
  *
@@ -36,7 +39,11 @@
 	var log = window.log || $.noop;
 
 	// jQuery.ajax config
-	var config = {};
+	var config = {
+		fileError: function (info, textStatus, textDescription) {
+			window.alert(textDescription);
+		}
+	};
 	
 	// Feature detection
 	var isSupported = (function () {
@@ -79,15 +86,15 @@
 		if (settings.fileType && settings.fileType.test) {
 			// Not using MIME types
 			if (!settings.fileType.test(info.name.substr(info.name.lastIndexOf('.')+1))) {
-				log('ERROR: Not acceptable file type.');
-				window.alert('Not acceptable file type.');
+				log('ERROR: Invalid Filetype.');
+				settings.fileError.call(this, info, 'INVALID_FILETYPE', 'Invalid filetype.');
 				return;
 			}
 		}
 		
 		if (settings.fileMaxSize && file.size > settings.fileMaxSize) {
-			log('ERROR: File is too big.');
-			window.alert('File is too big.');
+			log('ERROR: File exceeds size limit.');
+			settings.fileError.call(this, info, 'FILE_EXCEEDS_SIZE_LIMIT', 'File exceeds size limit.');
 			return;
 		}
 		
@@ -107,13 +114,16 @@
 				if (ev.target.error) {
 					switch (ev.target.error) {
 						case 8:
-						window.alert('File not found.');
+						log('ERROR: File not found.');
+						settings.fileError.call(this, info, 'FILE_NOT_FOUND', 'File not found.');
 						break;
 						case 24:
-						window.alert('File not readable.');
+						log('ERROR: File not readable.');
+						settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
 						break;
 						case 18:
-						window.alert('File cannot be access due to security constrant.');
+						log('ERROR: File cannot be access due to security constrant.');
+						settings.fileError.call(this, info, 'SECURITY_ERROR', 'File cannot be access due to security constrant.');
 						break;
 						case 20: //User Abort
 						break;
@@ -126,7 +136,8 @@
 			try {
 				var bin = file.getAsBinary();
 			} catch (e) {
-				window.alert('File cannot be accessed.');
+				log('ERROR: File not readable.');
+				settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
 				return;
 			}
 			handleForm(settings, file, bin, info);
