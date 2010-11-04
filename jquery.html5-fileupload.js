@@ -341,7 +341,7 @@
 			
 			// multipart/form-data boundary
 			var bd = 'xhrupload-' + parseInt(Math.random()*(2 << 16));
-			settings.contentType = 'multipart/form-data, boundary=' + bd;
+			settings.contentType = 'multipart/form-data; boundary=' + bd;
 			settings.data = '--' + bd + '\n' // RFC 1867 Format, simulate form file upload
 			+ 'content-disposition: form-data; name="Filedata";'
 			+ ' filename="' + (info.name_bin || info.name) + '"\n'
