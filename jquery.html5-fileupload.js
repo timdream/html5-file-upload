@@ -218,16 +218,12 @@
 	// step 1.5: inject file into <img>, paste the pixels into <canvas>,
 	// read the final image
 	var handleImage = function (settings, file, dataurl, info) {
-		var timer = setTimeout(
-			function () {
-				log('ERROR: <img> failed to load, file is not a supported image format.');
-				settings.fileError.call(this, info, 'FILE_NOT_IMAGE', 'File is not a supported image format.');
-			},
-			200 //FIXME: what if a local file did take longer than this time to load.
-		);
 		var img = new Image();
+		img.onerror = function () {
+			log('ERROR: <img> failed to load, file is not a supported image format.');
+			settings.fileError.call(this, info, 'FILE_NOT_IMAGE', 'File is not a supported image format.');
+		};
 		img.onload = function () {
-			clearTimeout(timer);
 			var ratio = Math.max(
 				img.width/settings.imageMaxWidth,
 				img.height/settings.imageMaxHeight,
