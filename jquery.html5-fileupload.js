@@ -127,8 +127,8 @@
 		settings.resizeImage = !!(settings.imageMaxWidth || settings.imageMaxHeight);
 
 		if (settings.resizeImage && !isImageSupported && settings.allowUploadOriginalImage) {
-			log('INFO: Fall back to upload original un-resized image.');
-			setting.resizeImage = false;
+			log('WARN: Fall back to upload original un-resized image.');
+			settings.resizeImage = false;
 		}
 		
 		if (settings.resizeImage) {
