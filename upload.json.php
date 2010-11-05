@@ -11,6 +11,12 @@ if (!$_FILES['Filedata']) {
 	print(json_encode(array('error' => 'Filedata field not found.')));
 	exit;
 }
+
+if ($_FILES['Filedata']['error'] !== 0) {
+	print(json_encode(array('error' => 'Filedata field found but with error #' . $_FILES['Filedata']['error'] . '.')));
+	exit;
+}
+
 print(
 	json_encode(
 		array_merge(
