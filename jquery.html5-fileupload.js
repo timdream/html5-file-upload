@@ -9,11 +9,14 @@
  *  works in Firefox 3, Chrome 5, Safari 5 and higher
  *
  *  Image resizing and uploading currently works in Fx 3 and up only.
- *  An extra settings will allow Webkit users to upload the original image.
+ *  Extra settings will allow Webkit users to upload the original image
+ *  or send the resized image in base64 form.
  *
  *  Usage:
  *   $.fileUploadSupported // a boolean value indicates if the browser is supported.
- *   $.imageUploadSupported // a boolean value indicates if the browser could handle uploading resized images.
+ *   $.imageUploadSupported // a boolean value indicates if the browser could resize image and upload in binary form.
+ *   $.fileUploadAsBase64Supported // a boolean value indicate if the browser upload files in based64.
+ *   $.imageUploadAsBase64Supported // a boolean value indicate if the browser could resize image and upload in based64.
  *   $('input[type=file]').fileUpload(ajaxSettings); //Make a input[type=file] select-and-send file upload widget
  *   $('#any-element').fileUpload(ajaxSettings); //Make a element receive dropped file
  *   //TBD $('form#fileupload').fileUpload(ajaxSettings); //Send a ajax form with file
@@ -38,8 +41,14 @@
  *           File size and type limit checking will be ignored.
  *      allowUploadOriginalImage:
  *           Set to true if you accept original image to be uploaded as a fallback
- *           when image resizing functionality is not availible.
+ *           when image resizing functionality is not availible (such as Webkit browsers).
  *           File size and type limit will be enforced.
+ *      allowDataInBase64:
+ *           Alternatively, you may wish to resize the image anyway and send the data
+ *           in base64. The data will be 133% larger and you will need to process it further with 
+ *           server-side script.
+ *           This setting might work with browsers which could read file but cannot send it in original
+ *           binary (no known browser are designed this way though)
  *      forceResize:
  *           Set to true will cause the image being re-sampled even if the resized image 
  *           has the same demension as the original one.
@@ -66,54 +75,41 @@
 	
 	// Feature detection
 	
-	var canSendBinaryString = (XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary);
-	
-	var isSupported = (function () {
-		if (
-			!canSendBinaryString // Gecko specific binary xhr since Fx3.0
-			&&
-			!window.FormData // HTML5 browsers that supports FormData interface (which append files)
-		) {
-			log('INFO: This is not a supported browser');
-			return false;
-		}
-		log('INFO: This is a ajaxupload-enabled browser.');
-		return true;
-	})();
+	// Read as binary string: FileReader API || Gecko-specific function (Fx3)
+	var canReadAsBinaryString = (window.FileReader || window.File.prototype.getAsBinary);
+	// Read file using FormData interface
+	var canReadFormData = !!(window.FormData);
+	// Read file into data: URL: FileReader API || Gecko-specific function (Fx3)
+	var canReadAsBase64 = (window.FileReader || window.File.prototype.getAsDataURL);
 
-	var isImageSupported = (function () {
-		var canvas = document.createElement('canvas');
-		if (canvas.mozGetAsFile) {
-			// Fx4 (> beta 7; 20100917) non-standard in-memory file
-			log('INFO: This browser supports image resizing and uploading through canvas.mozGetAsFile.');
-			return true;
-		}
-		if (
-			(window.FileReader || window.File.prototype.getAsDataURL)
-			&& window.atob && canvas.toDataURL && canSendBinaryString
-		) {
-			// Use above functions to extract and send binary string
-			log('INFO: This browser supports image resizing and uploading through binary string uploading.');
-			return true;
-		}
-		log('INFO: This browser does not support uploading resized images.');
-		return false;
-	})();
-	
-	// Overwrite xhr.send() in Gecko > 1.9.0 (Fx30)
-	/* if (XMLHttpRequest && XMLHttpRequest.prototype.sendAsBinary) {
-		log('INFO: xhr.send is overwritten.');
-		XMLHttpRequest.prototype._send = XMLHttpRequest.prototype.send;
-		XMLHttpRequest.prototype.send = function (data) {
-			if (typeof data === 'string') {
-				log('INFO: Using xhr.sendAsBinary.');
-				return this.sendAsBinary(data);
-			} else {
-				return this._send(data);
-			}
-		}
-	} */
+	var canResizeImageToBase64 = !!(document.createElement('canvas').toDataURL);
+	var canResizeImageToBinaryString = canResizeImageToBase64 && window.atob;
+	var canResizeImageToFile = !!(document.createElement('canvas').mozGetAsFile);
+ 	
+	// Send file in multipart/form-data with binary xhr (Gecko-specific function)
+	var canSendBinaryString = (window.XMLHttpRequest && window.XMLHttpRequest.prototype.sendAsBinary);
+	// Send file as in FormData object
+	var canSendFormData = !!(window.FormData);
+	// Send image base64 data by extracting data: URL
+	var canSendImageInBase64 = !!(document.createElement('canvas').toDataURL);
 
+	var isSupported = (
+		(canReadAsBinaryString && canSendBinaryString)
+		|| (canReadFormData && canSendFormData)
+	);
+	var isImageSupported = (
+		canReadAsBase64 && (
+			(canResizeImageToBinaryString && canSendBinaryString)
+			|| (canResizeImageToFile && canSendFormData)
+		)
+	);
+	var isSupportedInBase64 = canReadAsBase64;	
+	var isImageSupportedInBase64 = canReadAsBase64 && canResizeImageToBase64;
+
+	var dataURLtoBase64 = function (dataurl) {
+		return dataurl.substring(dataurl.indexOf(',')+1, dataurl.length);
+	}
+	
 	// Step 1: check file info and attempt to read the file
 	// paramaters: Ajax settings, File object
 	var handleFile = function (settings, file) {
@@ -153,9 +149,9 @@
 			}
 		}
 
-		if (!settings.resizeImage && window.FormData) {
+		if (!settings.resizeImage && canReadFormData) {
 			log('INFO: Bypass file reading, insert file object into FormData object directly.');
-			handleForm(settings, file, null, info);
+			handleForm(settings, 'file', file, info);
 		} else if (window.FileReader) {
 			log('INFO: Using FileReader to do asynchronously file reading.');
 			var reader = new FileReader();
@@ -180,19 +176,34 @@
 				}
 			}
 			if (!settings.resizeImage) {
-				reader.onloadend = function (ev) {
-					var bin = ev.target.result;
-					handleForm(settings, file, bin, info);
-				};
-				reader.readAsBinaryString(file);
+				if (canSendBinaryString) {
+					reader.onloadend = function (ev) {
+						var bin = ev.target.result;
+						handleForm(settings, 'bin', bin, info);
+					};
+					reader.readAsBinaryString(file);
+				} else if (settings.allowDataInBase64) {
+					reader.onloadend = function (ev) {
+						handleForm(
+							settings,
+							'base64',
+							dataURLtoBase64(ev.target.result),
+							info
+						);
+					};
+					reader.readAsDataURL(file);
+				} else {
+					log('ERROR: No available method to extract file; allowDataInBase64 not set.');
+					settings.fileError.call(this, info, 'NO_BIN_SUPPORT_AND_BASE64_NOT_SET', 'No available method to extract file; allowDataInBase64 not set.');
+				}
 			} else {
 				reader.onloadend = function (ev) {
 					var dataurl = ev.target.result;
-					handleImage(settings, file, dataurl, info);
+					handleImage(settings, dataurl, info);
 				};
 				reader.readAsDataURL(file);
 			}
-		} else {
+		} else if (window.File.prototype.getAsBinary) {
 			log('WARN: FileReader does not exist, UI will be blocked when reading big file.');
 			if (!settings.resizeImage) {
 				try {
@@ -202,6 +213,7 @@
 					settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
 					return;
 				}
+				handleForm(settings, 'bin', bin, info);
 			} else {
 				try {
 					var bin = file.getAsDataURL();
@@ -210,14 +222,17 @@
 					settings.fileError.call(this, info, 'IO_ERROR', 'File not readable.');
 					return;
 				}
+				handleImage(settings, dataurl, info);
 			}
-			handleImage(settings, file, dataurl, info);
+		} else {
+			log('ERROR: No available method to extract file; this browser is not supported.');
+			settings.fileError.call(this, info, 'NOT_SUPPORT', 'ERROR: No available method to extract file; this browser is not supported.');
 		}
 	};
 
 	// step 1.5: inject file into <img>, paste the pixels into <canvas>,
 	// read the final image
-	var handleImage = function (settings, file, dataurl, info) {
+	var handleImage = function (settings, dataurl, info) {
 		var img = new Image();
 		img.onerror = function () {
 			log('ERROR: <img> failed to load, file is not a supported image format.');
@@ -239,12 +254,24 @@
 			);
 			if (!settings.forceResize && img.width === d.w && img.height === d.h) {
 				log('INFO: Image demension is the same, send the original file.');
-				handleForm(
-					settings,
-					file,
-					window.atob(dataurl.substr(dataurl.indexOf('e64,')+4)),
-					info
-				);
+				if (canResizeImageToBinaryString) {
+					handleForm(
+						settings,
+						'bin',
+						window.atob(dataURLtoBase64(dataurl)),
+						info
+					);
+				} else if (settings.allowDataInBase64) {
+					handleForm(
+						settings,
+						'base64',
+						dataURLtoBase64(dataurl),
+						info
+					);
+				} else {
+					log('ERROR: No available method to send the original file; allowDataInBase64 not set.');
+					settings.fileError.call(this, info, 'NO_BIN_SUPPORT_AND_BASE64_NOT_SET', 'No available method to extract file; allowDataInBase64 not set.');
+				}
 				return;
 			}
 			var canvas = document.createElement('canvas');
@@ -271,7 +298,7 @@
 				name: info.name.substr(0, info.name.indexOf('.')) + '.resized.' + settings.imageType
 			};
 			
-			if (canvas.mozGetAsFile && window.FormData) {
+			if (canResizeImageToFile && canSendFormData) {
 				// Gecko 2 (Fx4) non-standard function
 				var nfile = canvas.mozGetAsFile(
 					ninfo.name,
@@ -280,36 +307,42 @@
 				ninfo.size = file.size || file.fileSize;
 				handleForm(
 					settings,
+					'file',
 					nfile,
-					null,
 					ninfo
 				);
-			} else {
+			} else if (canResizeImageToBinaryString && canSendBinaryString) {
 				// Read the image as DataURL, convert it back to binary string.
-				var bin = window.atob(
-					canvas
-					.toDataURL('image/' + settings.imageType)
-					.substr(19 + settings.imageType.length) // ('data:image/' + ';base64,').length === 19
-				);
+				var bin = window.atob(dataURLtoBase64(canvas.toDataURL('image/' + settings.imageType)));
 				ninfo.size = bin.length;
 				handleForm(
 					settings,
-					null,
+					'bin',
 					bin,
 					ninfo
 				);
+			} else if (settings.allowDataInBase64 && canResizeImageToBase64 && canSendImageInBase64) {
+				handleForm(
+					settings,
+					'base64',
+					dataURLtoBase64(canvas.toDataURL('image/' + settings.imageType)),
+					ninfo
+				);
+			} else {
+				log('ERROR: No available method to extract image; allowDataInBase64 not set.');
+				settings.fileError.call(this, info, 'NO_BIN_SUPPORT_AND_BASE64_NOT_SET', 'No available method to extract file; allowDataInBase64 not set.');
 			}
 		}
 		img.src = dataurl;
 	}
 	// Step 2: construct form data and send the file
 	// paramaters: Ajax settings, File object, binary string of file || null, file info assoc array
-	var handleForm = function (settings, file, bin, info) {
-		if (window.FormData && file) {
+	var handleForm = function (settings, type, data, info) {
+		if (canSendFormData && type === 'file') {
 			// FormData API saves the day
 			log('INFO: Using FormData to construct form.');
 			var formdata = new FormData();
-			formdata.append('Filedata', file);
+			formdata.append('Filedata', data);
 			// Prevent jQuery form convert FormData object into string.
 			settings.processData = false;
 			// Prevent jQuery from overwrite automatically generated xhr content-Type header
@@ -321,9 +354,9 @@
 				if (s.__beforeSend) return s.__beforeSend.call(this, xhr, s);
 			}
 			//settings.data = formdata;
-		} else if (canSendBinaryString) {
+		} else if (canSendBinaryString && type === 'bin') {
 			log('INFO: Concat our own multipart/form-data data string.');
-			
+						
 			// A placeholder MIME type
 			if (!info.type) info.type = 'application/octet-stream';
 
@@ -342,10 +375,27 @@
 			+ 'content-disposition: form-data; name="Filedata";'
 			+ ' filename="' + (info.name_bin || info.name) + '"\n'
 			+ 'Content-Type: ' + info.type + '\n\n'
-			+ bin + '\n\n'
+			+ data + '\n\n'
+			+ '--' + bd + '--';
+		} else if (settings.allowDataInBase64 && type === 'base64') {
+			log('INFO: Concat our own multipart/form-data data string; send the file in base64 because binary xhr is not supported.');
+			
+			// A placeholder MIME type
+			if (!info.type) info.type = 'application/octet-stream';
+
+			// multipart/form-data boundary
+			var bd = 'xhrupload-' + parseInt(Math.random()*(2 << 16));
+			settings.contentType = 'multipart/form-data; boundary=' + bd;
+			settings.data = '--' + bd + '\n' // RFC 1867 Format, simulate form file upload
+			+ 'content-disposition: form-data; name="Filedata";'
+			+ ' filename="' + encodeURIComponent(info.name) + '.base64"\n'
+			+ 'Content-Transfer-Encoding: base64\n' // Vaild MIME header, but won't work with PHP file upload handling.
+			+ 'Content-Type: ' + info.type + '\n\n'
+			+ data + '\n\n'
 			+ '--' + bd + '--';
 		} else {
-			log('ERROR: Image data is represent as a string but binary xhr function not available. You may set allowUploadOriginalImage to allow the original file being sent.');
+			log('ERROR: Data is not given in processable form.');
+			settings.fileError.call(this, info, 'INTERNAL_ERROR', 'Data is not given in processable form.');
 			return;
 		}
 		xhrupload(settings);
@@ -366,12 +416,6 @@
 	};
 	
 	$.fn.fileUpload = function(settings) {
-
-		if (!isSupported) {
-			log('ERROR: skip not-supported browser.');
-			return;
-		}
-
 		this.each(function(i, el) {
 			if ($(el).is('input[type=file]')) {
 				log('INFO: binding onchange event to a input[type=file].');
@@ -431,5 +475,7 @@
 	
 	$.fileUploadSupported = isSupported;
 	$.imageUploadSupported = isImageSupported;
+	$.fileUploadAsBase64Supported = isSupportedInBase64;
+	$.imageUploadAsBase64Supported = isImageSupportedInBase64;
 	
 })(jQuery);

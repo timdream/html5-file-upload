@@ -153,7 +153,9 @@
 			dataType: 'json',
 			imageMaxHeight: 200,
 			imageMaxWidth: 300,
-			allowUploadOriginalImage: true,
+			//allowUploadOriginalImage: true,  // Webkit browsers need one of these two settings to work.
+			allowDataInBase64: true,           // (Fallback to original file, or send the resized in base64)
+			forceResize: false,
 			beforeSend: function () {
 				$(document.body).addClass('uploading');
 			},
