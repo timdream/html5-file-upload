@@ -5,11 +5,11 @@
  *  Web: http://timc.idv.tw/html5-file-upload/
  *  
  *  Ajax File Upload that use real xhr,
- *  built with getAsBinary, sendAsBinary, FormData, FileReader and etc.
+ *  built with getAsBinary, sendAsBinary, FormData, FileReader, ArrayBuffer, BlobBuilder and etc.
  *  works in Firefox 3, Chrome 5, Safari 5 and higher
  *
- *  Image resizing and uploading currently works in Fx 3 and up only.
- *  Extra settings will allow Webkit users to upload the original image
+ *  Image resizing and uploading currently works in Fx 3 and up, and Chrome 9 (dev) and up only.
+ *  Extra settings will allow current Webkit users to upload the original image
  *  or send the resized image in base64 form.
  *
  *  Usage:
@@ -87,7 +87,11 @@
 	var canResizeImageToFile = !!(document.createElement('canvas').mozGetAsFile);
  	
 	// Send file in multipart/form-data with binary xhr (Gecko-specific function)
-	var canSendBinaryString = (window.XMLHttpRequest && window.XMLHttpRequest.prototype.sendAsBinary);
+	// || xhr.send(blob) that sends blob made with ArrayBuffer.
+	var canSendBinaryString = (
+		(window.XMLHttpRequest && window.XMLHttpRequest.prototype.sendAsBinary)
+		|| (window.ArrayBuffer && window.BlobBuilder)
+	);
 	// Send file as in FormData object
 	var canSendFormData = !!(window.FormData);
 	// Send image base64 data by extracting data: URL
@@ -371,12 +375,40 @@
 			// multipart/form-data boundary
 			var bd = 'xhrupload-' + parseInt(Math.random()*(2 << 16));
 			settings.contentType = 'multipart/form-data; boundary=' + bd;
-			settings.data = '--' + bd + '\n' // RFC 1867 Format, simulate form file upload
+			var formdata = '--' + bd + '\n' // RFC 1867 Format, simulate form file upload
 			+ 'content-disposition: form-data; name="Filedata";'
 			+ ' filename="' + (info.name_bin || info.name) + '"\n'
 			+ 'Content-Type: ' + info.type + '\n\n'
 			+ data + '\n\n'
 			+ '--' + bd + '--';
+			
+			if (window.XMLHttpRequest.prototype.sendAsBinary) {
+				// Use xhr.sendAsBinary that takes binary string
+				log('INFO: Pass binary string to xhr.');
+				settings.data = formdata;
+			} else {
+				// make a blob
+				log('INFO: Convert binary string into Blob.');
+				var buf = new ArrayBuffer(formdata.length);
+				var view = new Uint8Array(buf);
+				$.each(
+					formdata,
+					function (i, o) {
+						view[i] = o.charCodeAt(0);
+					}
+				);
+				var bb = new BlobBuilder();
+				bb.append(buf);
+				var blob = bb.getBlob();
+				
+				settings.processData = false;
+				settings.__beforeSend = settings.beforeSend;
+				settings.beforeSend = function (xhr, s) {
+					s.data = blob;
+					if (s.__beforeSend) return s.__beforeSend.call(this, xhr, s);
+				};
+			}
+			
 		} else if (settings.allowDataInBase64 && type === 'base64') {
 			log('INFO: Concat our own multipart/form-data data string; send the file in base64 because binary xhr is not supported.');
 			
