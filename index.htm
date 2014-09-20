@@ -7,12 +7,26 @@
 	<meta property="og:title" content="HTML5 AJAX File Upload Control"/>
 	<meta property="og:site_name" content="timdream"/>
 	<meta property="fb:admins" content="541998202"/>
+  <script type="text/javascript">
+    if (window.location.hostname === 'timdream.org') {
+      var _gaq = _gaq || [];
+      _gaq.push(['_setAccount', 'UA-4623408-2']);
+      _gaq.push(['_trackPageview']);
+
+      (function() {
+        var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+        ga.src = 'https://ssl.google-analytics.com/ga.js';
+        var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+      })();
+    }
+
+  </script>
 	<style type="text/css">
-	
+
 	body.uploading {
 		background: url("ajax-loader.gif") no-repeat fixed right top transparent;
 	}
-	
+
 	#dropbox {
 		border: 5px solid #ddd;
 		background-color: #ddd;
@@ -20,11 +34,11 @@
 		-moz-border-radius: 10px;
 		-webkit-border-radius: 10px;
 	}
-	
+
 	.dragging #dropbox {
 		border: 5px inset #ccc;
 	}
-	
+
 	/* file input box hack that makes a button */
 	#file_containor {
 		border: 5px solid #ddd;
@@ -43,16 +57,16 @@
 		border: 5px inset #ccc;
 	}
 
-	
+
 	#file_containor input {
 		position: absolute; top: 0; right: 0;
 		font-size: 250px;
 		opacity: 0;
 		cursor: pointer; /* Won't work in Fx 3.6 */
 	}
-	
+
 	iframe {float: right}
-	
+
 	</style>
 </head>
 <body>
@@ -111,7 +125,7 @@
 	} else {
 		$('#detector').text('This browser is supported.');
 	}
-	
+
 	// Detector demo
 	if (!$.imageUploadSupported) {
 		$(document.body).addClass('not_supported');
@@ -144,7 +158,7 @@
 			}
 		}
 	);
-	
+
 	// Enable image upload plugin
 	$('.image-upload').fileUpload(
 		{
@@ -175,7 +189,7 @@
 			}
 		}
 	);
-	
+
 	// Provide page-wide dragover interaction
 	$(document.body).bind(
 		'dragenter',
